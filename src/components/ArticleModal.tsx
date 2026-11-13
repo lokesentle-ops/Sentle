@@ -1,16 +1,19 @@
-import React, { useEffect } from "react";
-import { Bookmark, Check, ExternalLink, Loader2, Share2, Square, Volume2, X } from "lucide-react";
-import type { Article, Language } from "../types";
-import { getLocalizedArticle } from "../data/articles";
+import React, { useEffect, useRef } from 'react';
+import { Article, LanguageCode } from '../types';
+import {
+  DEPARTMENT_IMAGES,
+  formatDate,
+  getArticleImage,
+  getLocalizedArticle,
+} from '../data/articles';
 
 interface ArticleModalProps {
   article: Article | null;
-  language: Language;
+  language: LanguageCode;
+  isPlaying: boolean;
   isSaved: boolean;
-  ttsLoadingId: string | null;
-  activeAudioId: string | null;
   onClose: () => void;
-  onLanguageChange: (lang: Language) => void;
+  onChangeLanguage: (lang: LanguageCode) => void;
   onListen: (article: Article) => void;
   onShare: (article: Article) => void;
   onSave: (articleId: number) => void;
@@ -19,204 +22,185 @@ interface ArticleModalProps {
 export const ArticleModal: React.FC<ArticleModalProps> = ({
   article,
   language,
+  isPlaying,
   isSaved,
-  ttsLoadingId,
-  activeAudioId,
   onClose,
-  onLanguageChange,
+  onChangeLanguage,
   onListen,
   onShare,
   onSave,
 }) => {
-  useEffect(() => {
-    if (!article) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [article, onClose]);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
-  if (!article) return null;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (article) {
+      if (!dialog.open && typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      }
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [article]);
+
+  if (!article) {
+    return <dialog id="articleDialog" ref={dialogRef} className="article-dialog" />;
+  }
 
   const localized = getLocalizedArticle(article, language);
-  const audioKey = `article-${article.id}`;
-  const isPlaying = activeAudioId === audioKey;
-  const isLoadingAudio = ttsLoadingId === audioKey;
-  const formattedDate = new Date(article.date + "T12:00:00").toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const { image, alt } = getArticleImage(article);
+  const deptMedia = DEPARTMENT_IMAGES[article.category] || DEPARTMENT_IMAGES['Public Notices'];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-[2px] p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="article-modal-title"
+    <dialog
+      id="articleDialog"
+      ref={dialogRef}
+      className="article-dialog"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === dialogRef.current) {
+          onClose();
+        }
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-xl bg-white border border-slate-200 shadow-2xl p-6 md:p-9 text-slate-900">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close article"
-          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center cursor-pointer transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <label
-              htmlFor="article-modal-language"
-              className="block text-xs font-bold text-slate-800"
-            >
-              {language === "st"
-                ? "Puo ea sengoloa / Fetola puo"
-                : "Reading language / Switch language"}
+      <button
+        type="button"
+        className="dialog-close"
+        id="dialogClose"
+        aria-label="Close article"
+        onClick={onClose}
+      >
+        ×
+      </button>
+      <div id="articleContent">
+        <div className="article-content">
+          <div className="article-language-control">
+            <label htmlFor="articleLanguageSelect">
+              {language === 'st'
+                ? 'Puo ea sengoloa / Fetola puo:'
+                : 'Reading language / Switch language:'}
             </label>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {language === "st"
-                ? "Fetola lipakeng tsa Senyesemane le Sesotho pele u bala kapa u mamela."
-                : "Audio narration and article text adapt to the selected language."}
-            </p>
+            <select
+              id="articleLanguageSelect"
+              aria-label="Choose article reading language"
+              value={language}
+              onChange={(e) => onChangeLanguage(e.target.value as LanguageCode)}
+            >
+              <option value="en">English</option>
+              <option value="st">Sesotho</option>
+            </select>
+            <small>
+              {language === 'st'
+                ? 'Mamela ho mamela sengoloa ka puo e khethiloeng. Liphetolelo li fumaneha feela bakeng sa litaba tse fetoletsoeng.'
+                : 'Choose a language before reading or listening. Sesotho is shown where a translation is available.'}
+            </small>
           </div>
-          <select
-            id="article-modal-language"
-            value={language}
-            onChange={(e) => onLanguageChange(e.target.value as Language)}
-            className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 shrink-0"
-          >
-            <option value="en">English</option>
-            <option value="st">Sesotho</option>
-          </select>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-2">
-          <span className="font-semibold text-[#1c5d91]">{article.category}</span>
-          <span aria-hidden="true">·</span>
-          <span className="tabular-nums">{formattedDate}</span>
-          <span aria-hidden="true">·</span>
-          <span>{article.ministry}</span>
-          {article.fileType && article.fileSize && (
-            <>
-              <span aria-hidden="true">·</span>
-              <span className="font-mono text-[11px]">{article.fileType} ({article.fileSize})</span>
-            </>
+          <div className="article-hero-image-wrap">
+            <img
+              src={image}
+              alt={alt}
+              className="article-hero-image"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
+          <div className="article-category-row">
+            <img
+              src={deptMedia.logo}
+              alt={deptMedia.logoAlt}
+              className="article-ministry-inline-logo"
+              referrerPolicy="no-referrer"
+            />
+            <div className="article-category">{article.category.toUpperCase()}</div>
+          </div>
+
+          <h2>{localized.title}</h2>
+          <div className="article-meta">
+            {formatDate(article.date)} · {article.ministry} · Prototype content
+          </div>
+
+          {localized.translationMissing && (
+            <p className="translation-note">
+              Sesotho version is not available for this article yet. The English text is shown.
+            </p>
           )}
-        </div>
 
-        <h2
-          id="article-modal-title"
-          className="text-2xl md:text-3xl font-bold text-[#112a46] leading-tight mb-4 [text-wrap:balance]"
-        >
-          {localized.title}
-        </h2>
-
-        {localized.translationMissing && (
-          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900">
-            Sesotho translation has not been added for this article yet. Showing English text.
-          </p>
-        )}
-
-        <div className="space-y-4 text-sm md:text-[15px] leading-relaxed text-slate-700 max-w-prose">
-          <p className="font-medium text-slate-800">{localized.summary}</p>
+          <p>{localized.summary}</p>
           <p>{localized.body}</p>
-          <p className="text-xs text-slate-500">
-            {language === "st"
-              ? "Netefatsa litaba le lekala le ikarabellang pele u li sebelisa kapa u li arolelana."
-              : "Readers should verify deadlines and statutory details with the responsible ministry publication."}
+          <p>
+            {language === 'st'
+              ? 'Netefatsa litaba le lekala le ikarabellang pele u li sebelisa kapa u li arolelana.'
+              : 'Readers should check the responsible ministry and original publication before relying on or sharing official information.'}
           </p>
-        </div>
 
-        <div className="mt-6 pt-5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          <a
-            href={article.sourceUrl || "https://www.gov.ls/documents/"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#1c5d91] hover:text-[#112a46] underline underline-offset-4"
-          >
-            <span>
-              {article.isOfficialDoc
-                ? "Open official document on gov.ls"
-                : "Visit Government of Lesotho portal"}
-            </span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-
-          {article.isOfficialDoc ? (
-            <span className="text-xs font-medium text-[#1e6b52]">
-              Official gov.ls document reference
-            </span>
-          ) : (
-            <span className="text-xs text-amber-800">
-              Prototype sample story · Not an official notice
-            </span>
-          )}
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={() => onListen(article)}
-            disabled={isLoadingAudio}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#1c5d91] hover:bg-[#112a46] text-white px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-60"
-          >
-            {isLoadingAudio ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>{language === "st" ? "E lokisa molumo..." : "Generating audio..."}</span>
-              </>
-            ) : isPlaying ? (
-              <>
-                <Square className="w-3.5 h-3.5 fill-current" />
-                <span>{language === "st" ? "Emisa molumo" : "Stop audio"}</span>
-              </>
+          <p>
+            {article.sourceUrl ? (
+              <a
+                className="source-link"
+                href={article.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open the supplied source ↗
+              </a>
             ) : (
-              <>
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>
-                  {language === "st" ? "Mamela sengoloa" : "Listen to article"}
-                </span>
-              </>
+              <a
+                className="source-link"
+                href="https://www.gov.ls/news/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Visit the Government of Lesotho news page ↗
+              </a>
             )}
-          </button>
+          </p>
 
-          <button
-            type="button"
-            onClick={() => onShare(article)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>{language === "st" ? "Arolelana" : "Share"}</span>
-          </button>
+          <div className="article-warning">
+            <strong>{language === 'st' ? 'Tsebiso:' : 'Prototype notice:'}</strong>{' '}
+            {language === 'st'
+              ? "Sengoloa sena ke sa mohlala, ha se phatlalatso ea 'muso e netefalitsoeng."
+              : 'This is sample content created to demonstrate the website. It is not a verified government announcement. Do not rely on it as official information.'}
+          </div>
 
-          <button
-            type="button"
-            onClick={() => onSave(article.id)}
-            className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              isSaved
-                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                : "border-slate-300 bg-white hover:bg-slate-50 text-slate-700"
-            }`}
-          >
-            {isSaved ? <Check className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
-            <span>
+          <div className="article-actions">
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => onListen(article)}
+            >
+              {isPlaying
+                ? language === 'st'
+                  ? 'Ⅱ Emisa'
+                  : 'Ⅱ Stop'
+                : language === 'st'
+                ? '▶ Mamela'
+                : '▶ Listen to article'}
+            </button>
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={() => onShare(article)}
+            >
+              ↗ {language === 'st' ? 'Arolelana' : 'Share this article'}
+            </button>
+            <button
+              type="button"
+              className="button button-outline"
+              onClick={() => onSave(article.id)}
+            >
               {isSaved
-                ? language === "st"
-                  ? "E bolokiloe"
-                  : "Saved"
-                : language === "st"
-                ? "Boloka sengoloa"
-                : "Save article"}
-            </span>
-          </button>
+                ? '✓ Saved in this browser'
+                : `☆ ${language === 'st' ? 'Boloka sengoloa' : 'Save article'}`}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

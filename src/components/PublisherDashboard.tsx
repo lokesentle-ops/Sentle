@@ -1,1206 +1,1012 @@
-import React, { useMemo, useState } from "react";
+import React, { useRef, useState } from 'react';
 import {
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  Edit3,
-  ExternalLink,
-  FilePlus2,
-  Lock,
-  LogOut,
-  MessageSquareWarning,
-  ShieldCheck,
-  Trash2,
-  UserPlus,
-} from "lucide-react";
-import { LESOTHO_DISTRICTS } from "../data/articles";
-import type {
+  AdminSmsDraft,
   Article,
+  ArticleCategory,
   ArticleStatus,
-  Category,
+  ArticleVisual,
+  DemoSession,
   DemoUser,
-  Language,
-  SmsDraft,
-  UserSession,
-  VisualTone,
-} from "../types";
+} from '../types';
+import { DEPARTMENT_IMAGES, DISTRICTS, LESOTHO_MINISTRIES } from '../data/articles';
 
-interface PublisherDashboardProps {
-  language: Language;
-  session: UserSession | null;
-  demoUsers: DemoUser[];
-  customArticles: Article[];
-  smsDrafts: SmsDraft[];
-  onLogin: (username: string, password: string) => { ok: boolean; error?: string };
-  onLogout: () => void;
-  onCreatePublisher: (
-    username: string,
-    password: string
-  ) => { ok: boolean; error?: string };
-  onSaveArticle: (article: Article, targetStatus: "draft" | "pending_review") => void;
-  onDeleteDraft: (id: number) => void;
-  onAdminReview: (
-    id: number,
-    decision: "published" | "changes_requested",
-    reviewNote: string
-  ) => void;
-  onSaveSmsDraft: (draft: Omit<SmsDraft, "id" | "createdAt" | "createdBy">) => void;
-  onViewPublicArticle: (article: Article) => void;
-  onToast: (message: string) => void;
+const DEMO_USERS_KEY = 'governmentNewsDemoUsers';
+const DEMO_SESSION_KEY = 'governmentNewsDemoSession';
+const ADMIN_SMS_KEY = 'governmentNewsAdminSmsDrafts';
+
+function readDemoUsers(): DemoUser[] {
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_USERS_KEY) || '[]');
+  } catch {
+    return [];
+  }
 }
 
-const CATEGORY_TO_VISUAL: Record<Category, VisualTone> = {
-  "Public Notices": "notice",
-  Health: "health",
-  Education: "education",
-  Development: "development",
-  "Official Documents": "document",
-};
+function readDemoSession(): DemoSession | null {
+  try {
+    return JSON.parse(sessionStorage.getItem(DEMO_SESSION_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
 
-const STATUS_LABEL: Record<ArticleStatus, string> = {
-  draft: "Draft",
-  pending_review: "Pending review",
-  changes_requested: "Changes requested",
-  published: "Published",
-  rejected: "Rejected",
-};
+function readSmsDrafts(): AdminSmsDraft[] {
+  try {
+    return JSON.parse(localStorage.getItem(ADMIN_SMS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
 
-const STATUS_STYLE: Record<ArticleStatus, string> = {
-  draft: "text-slate-600",
-  pending_review: "text-amber-700",
-  changes_requested: "text-red-700",
-  published: "text-[#1e6b52]",
-  rejected: "text-red-800",
-};
+function statusLabel(status?: ArticleStatus): string {
+  const map: Record<ArticleStatus, string> = {
+    draft: 'Draft',
+    pending_review: 'Pending review',
+    changes_requested: 'Changes requested',
+    published: 'Published',
+    rejected: 'Not approved',
+  };
+  return map[status || 'published'] || 'Draft';
+}
+
+interface PublisherDashboardProps {
+  customArticles: Article[];
+  onSaveCustomArticles: (items: Article[]) => void;
+  onOpenArticle: (article: Article) => void;
+  onShowToast: (message: string) => void;
+}
 
 export const PublisherDashboard: React.FC<PublisherDashboardProps> = ({
-  language,
-  session,
-  demoUsers,
   customArticles,
-  smsDrafts,
-  onLogin,
-  onLogout,
-  onCreatePublisher,
-  onSaveArticle,
-  onDeleteDraft,
-  onAdminReview,
-  onSaveSmsDraft,
-  onViewPublicArticle,
-  onToast,
+  onSaveCustomArticles,
+  onOpenArticle,
+  onShowToast,
 }) => {
-  // Login state
-  const [loginUsername, setLoginUsername] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
+  const [session, setSession] = useState<DemoSession | null>(() => readDemoSession());
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginMessage, setLoginMessage] = useState('');
 
   // Admin: create publisher
-  const [newPubUsername, setNewPubUsername] = useState("");
-  const [newPubPassword, setNewPubPassword] = useState("");
+  const [newPubUser, setNewPubUser] = useState('');
+  const [newPubPass, setNewPubPass] = useState('');
   const [createdCredentials, setCreatedCredentials] = useState<{
     username: string;
     password: string;
   } | null>(null);
-  const [pubFormError, setPubFormError] = useState("");
 
-  // Admin: review notes map by article id
+  // Admin: review notes keyed by article ID
   const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
 
-  // Admin: SMS alert draft composer
-  const [smsDistrict, setSmsDistrict] = useState("All districts");
-  const [smsTopic, setSmsTopic] = useState("Public Notice");
-  const [smsMessage, setSmsMessage] = useState("");
+  // Admin: SMS alert drafts
+  const [smsDrafts, setSmsDrafts] = useState<AdminSmsDraft[]>(() => readSmsDrafts());
+  const [smsDistrict, setSmsDistrict] = useState('All districts');
+  const [smsTopic, setSmsTopic] = useState('Public Notices');
+  const [smsMessage, setSmsMessage] = useState('');
+  const [smsResult, setSmsResult] = useState('');
 
-  // Publisher: create/edit article form
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<Category>("Public Notices");
-  const [ministry, setMinistry] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [district, setDistrict] = useState("All districts");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [summary, setSummary] = useState("");
-  const [body, setBody] = useState("");
-  const [showSesothoFields, setShowSesothoFields] = useState(false);
-  const [titleSt, setTitleSt] = useState("");
-  const [summarySt, setSummarySt] = useState("");
-  const [bodySt, setBodySt] = useState("");
-  const [articleFormError, setArticleFormError] = useState("");
-
-  // Inline delete confirmation (avoid window.confirm)
+  // Publisher: delete draft inline confirmation (avoids window.confirm)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  const pendingReviewQueue = useMemo(
-    () => customArticles.filter((a) => a.status === "pending_review"),
-    [customArticles]
-  );
+  // Publisher: article editor
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const editorRef = useRef<HTMLFormElement>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState<ArticleCategory>('Public Notices');
+  const [date, setDate] = useState(todayStr);
+  const [ministry, setMinistry] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [summary, setSummary] = useState('');
+  const [body, setBody] = useState('');
+  const [titleSt, setTitleSt] = useState('');
+  const [summarySt, setSummarySt] = useState('');
+  const [bodySt, setBodySt] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
 
-  const myArticles = useMemo(() => {
-    if (!session) return [];
-    if (session.role === "admin") return customArticles;
-    return customArticles.filter((a) => a.author === session.username);
-  }, [customArticles, session]);
-
-  const stats = useMemo(() => {
-    return {
-      total: myArticles.length,
-      drafts: myArticles.filter((a) => a.status === "draft").length,
-      pending: myArticles.filter((a) => a.status === "pending_review").length,
-      published: myArticles.filter((a) => a.status === "published").length,
-    };
-  }, [myArticles]);
-
-  const resetArticleForm = () => {
+  const resetEditor = () => {
     setEditingId(null);
-    setTitle("");
-    setCategory("Public Notices");
-    setMinistry("");
+    setTitle('');
+    setCategory('Public Notices');
     setDate(new Date().toISOString().slice(0, 10));
-    setDistrict("All districts");
-    setSourceUrl("");
-    setSummary("");
-    setBody("");
-    setTitleSt("");
-    setSummarySt("");
-    setBodySt("");
-    setArticleFormError("");
-    setShowSesothoFields(false);
+    setMinistry('');
+    setSourceUrl('');
+    setSummary('');
+    setBody('');
+    setTitleSt('');
+    setSummarySt('');
+    setBodySt('');
+    setConfirmed(false);
   };
 
-  const populateForEdit = (article: Article) => {
-    setEditingId(article.id);
-    setTitle(article.title);
-    setCategory(article.category);
-    setMinistry(article.ministry);
-    setDate(article.date);
-    setDistrict(article.district || "All districts");
-    setSourceUrl(article.sourceUrl || "");
-    setSummary(article.summary);
-    setBody(article.body);
-    setTitleSt(article.titleSt || "");
-    setSummarySt(article.summarySt || "");
-    setBodySt(article.bodySt || "");
-    setShowSesothoFields(Boolean(article.titleSt || article.summarySt || article.bodySt));
-    setArticleFormError("");
-  };
-
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setLoginError("");
-    const result = onLogin(loginUsername.trim(), loginPassword);
-    if (!result.ok) {
-      setLoginError(result.error || "Invalid credentials.");
+    const u = loginUsername.trim();
+    const p = loginPassword;
+    let user: DemoUser | null = null;
+    if (u === 'admin' && p === 'Admin123!') {
+      user = { username: 'admin', role: 'admin' };
     } else {
-      setLoginUsername("");
-      setLoginPassword("");
+      user = readDemoUsers().find((item) => item.username === u && item.password === p) || null;
     }
+
+    if (!user) {
+      setLoginMessage('Login failed. Check your username and password.');
+      return;
+    }
+
+    const nextSession: DemoSession = { username: user.username, role: user.role };
+    sessionStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(nextSession));
+    setSession(nextSession);
+    setLoginMessage('');
+    setLoginUsername('');
+    setLoginPassword('');
+    onShowToast(user.role === 'admin' ? 'Administrator signed in.' : 'Publisher signed in.');
   };
 
-  const handleCreatePublisherSubmit = (e: React.FormEvent) => {
+  const handleLogout = () => {
+    sessionStorage.removeItem(DEMO_SESSION_KEY);
+    setSession(null);
+    setCreatedCredentials(null);
+    setSmsResult('');
+    resetEditor();
+    onShowToast('You have logged out.');
+  };
+
+  const handleCreatePublisher = (e: React.FormEvent) => {
     e.preventDefault();
-    setPubFormError("");
-    const cleanUser = newPubUsername.trim();
-    if (!cleanUser || newPubPassword.length < 6) {
-      setPubFormError("Enter a username and a password of at least 6 characters.");
+    if (!session || session.role !== 'admin') {
+      onShowToast('Only the administrator can create publisher accounts.');
       return;
     }
-    const res = onCreatePublisher(cleanUser, newPubPassword);
-    if (!res.ok) {
-      setPubFormError(res.error || "Could not create publisher account.");
+    const username = newPubUser.trim();
+    const password = newPubPass;
+    const existing = readDemoUsers();
+    if (
+      username.toLowerCase() === 'admin' ||
+      existing.some((item) => item.username.toLowerCase() === username.toLowerCase())
+    ) {
+      onShowToast('That username is already in use. Choose another username.');
       return;
     }
-    setCreatedCredentials({ username: cleanUser, password: newPubPassword });
-    setNewPubUsername("");
-    setNewPubPassword("");
+
+    const nextUsers: DemoUser[] = [
+      ...existing,
+      { username, password, role: 'publisher', createdAt: new Date().toISOString() },
+    ];
+    localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(nextUsers));
+    setCreatedCredentials({ username, password });
+    setNewPubUser('');
+    setNewPubPass('');
+    onShowToast('Publisher login created in this browser.');
   };
 
-  const handleArticleSubmit = (targetStatus: "draft" | "pending_review") => {
-    setArticleFormError("");
-    if (!title.trim() || !ministry.trim() || !summary.trim() || !body.trim()) {
-      setArticleFormError(
-        "Please fill in Headline, Ministry, Summary, and Full article text."
-      );
-      return;
+  const handleCopyCredentials = () => {
+    if (!createdCredentials) return;
+    const details = `Publisher login details\nUsername: ${createdCredentials.username}\nTemporary password: ${createdCredentials.password}`;
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard
+        .writeText(details)
+        .then(() => onShowToast('Login details copied.'))
+        .catch(() => onShowToast(details));
+    } else {
+      onShowToast(details);
     }
-    if (sourceUrl.trim() && !/^https?:\/\//i.test(sourceUrl.trim())) {
-      setArticleFormError("Official source URL must begin with http:// or https://");
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    const existing = editingId ? customArticles.find((a) => a.id === editingId) : null;
-
-    const payload: Article = {
-      id: existing ? existing.id : Date.now(),
-      title: title.trim(),
-      category,
-      ministry: ministry.trim(),
-      date: date || nowIso.slice(0, 10),
-      visual: CATEGORY_TO_VISUAL[category],
-      district,
-      sourceUrl: sourceUrl.trim() || undefined,
-      summary: summary.trim(),
-      body: body.trim(),
-      titleSt: titleSt.trim() || undefined,
-      summarySt: summarySt.trim() || undefined,
-      bodySt: bodySt.trim() || undefined,
-      isOfficialDoc: false,
-      isCustom: true,
-      author: existing?.author || session?.username || "publisher",
-      status: targetStatus,
-      createdAt: existing?.createdAt || nowIso,
-      updatedAt: nowIso,
-      reviewNote: targetStatus === "pending_review" ? "" : existing?.reviewNote,
-    };
-
-    onSaveArticle(payload, targetStatus);
-    resetArticleForm();
   };
 
-  const handleSmsSubmit = (e: React.FormEvent) => {
+  const handleReviewArticle = (id: number, status: ArticleStatus) => {
+    if (!session || session.role !== 'admin') {
+      onShowToast('Only an administrator can review submissions.');
+      return;
+    }
+    const note = (reviewNotes[id] || '').trim();
+    if (status === 'changes_requested' && !note) {
+      onShowToast('Add a short note explaining the changes required.');
+      return;
+    }
+
+    const next = customArticles.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            status,
+            reviewNote: note,
+            reviewedBy: session.username,
+            reviewedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        : item
+    );
+    onSaveCustomArticles(next);
+    onShowToast(
+      status === 'published'
+        ? 'Article approved and published in this browser.'
+        : 'Changes requested. The publisher can edit and resubmit.'
+    );
+  };
+
+  const handleCreateSmsDraft = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!smsMessage.trim()) {
-      onToast("Enter an SMS alert draft message first.");
+    if (!session || session.role !== 'admin') {
+      onShowToast('Only the administrator can prepare government SMS alerts.');
       return;
     }
-    onSaveSmsDraft({
+    const msg = smsMessage.trim();
+    if (!msg) {
+      onShowToast('Enter the alert message first.');
+      return;
+    }
+
+    const draft: AdminSmsDraft = {
       district: smsDistrict,
       topic: smsTopic,
-      message: smsMessage.trim().slice(0, 320),
-    });
-    setSmsMessage("");
+      message: msg,
+      createdBy: session.username,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...smsDrafts, draft];
+    localStorage.setItem(ADMIN_SMS_KEY, JSON.stringify(next));
+    setSmsDrafts(next);
+    setSmsDistrict('All districts');
+    setSmsTopic('Public Notices');
+    setSmsMessage('');
+    setSmsResult(
+      `Alert draft saved for ${draft.district}. No SMS has been sent. Connect an approved SMS provider to deliver this alert.`
+    );
+    onShowToast('SMS alert draft saved. No message was sent.');
   };
 
-  const copyCredentials = async () => {
-    if (!createdCredentials) return;
-    const text = `Portal: Government News (Publish Demo)\nUsername: ${createdCredentials.username}\nTemporary password: ${createdCredentials.password}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      onToast("Publisher credentials copied to clipboard.");
-    } catch {
-      onToast("Copy failed — please note down the credentials manually.");
+  const handleSavePublisherArticle = (status: 'draft' | 'pending_review') => {
+    if (!session || session.role !== 'publisher') {
+      onShowToast('Please sign in with a publisher account first.');
+      return;
     }
+
+    const trimmedTitle = title.trim();
+    const trimmedBody = body.trim();
+    if (status !== 'draft') {
+      if (editorRef.current && !editorRef.current.reportValidity()) return;
+      if (!confirmed) {
+        onShowToast('Confirm that the article has been checked before submitting it.');
+        return;
+      }
+    }
+    if (status === 'draft' && !trimmedTitle && !trimmedBody) {
+      onShowToast('Enter a title or some article text before saving a draft.');
+      return;
+    }
+
+    const symbolMap: Record<ArticleCategory, string> = {
+      'Public Notices': '⚑',
+      Health: '✚',
+      Education: '▣',
+      Development: '⌂',
+    };
+    const visualMap: Record<ArticleCategory, ArticleVisual> = {
+      'Public Notices': 'notice',
+      Health: 'health',
+      Education: 'education',
+      Development: 'development',
+    };
+
+    const deptMedia = DEPARTMENT_IMAGES[category];
+    const existing = editingId
+      ? customArticles.find((item) => item.id === editingId && item.author === session.username)
+      : undefined;
+
+    if (editingId && !existing) {
+      onShowToast('This article cannot be edited from the current account.');
+      return;
+    }
+
+    const nextItem: Article = {
+      ...(existing || {}),
+      id: editingId || Date.now(),
+      title: trimmedTitle,
+      category,
+      ministry: ministry.trim(),
+      date: date || new Date().toISOString().slice(0, 10),
+      sourceUrl: sourceUrl.trim(),
+      symbol: symbolMap[category] || '▤',
+      visual: visualMap[category] || 'public',
+      image: existing?.image || deptMedia.image,
+      imageAlt: existing?.imageAlt || deptMedia.alt,
+      summary: summary.trim(),
+      body: trimmedBody,
+      titleSt: titleSt.trim(),
+      summarySt: summarySt.trim(),
+      bodySt: bodySt.trim(),
+      author: session.username,
+      status,
+      isCustom: true,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      reviewNote: status === 'pending_review' ? '' : existing?.reviewNote || '',
+    };
+
+    const nextList = existing
+      ? customArticles.map((item) => (item.id === editingId ? nextItem : item))
+      : [nextItem, ...customArticles];
+
+    onSaveCustomArticles(nextList);
+    resetEditor();
+    onShowToast(
+      status === 'draft'
+        ? 'Draft saved. You can edit it later.'
+        : 'Article submitted for administrator review. It is not public yet.'
+    );
   };
+
+  const loadForEdit = (item: Article) => {
+    setEditingId(item.id);
+    setTitle(item.title || '');
+    setCategory(item.category || 'Public Notices');
+    setDate(item.date || new Date().toISOString().slice(0, 10));
+    setMinistry(item.ministry || '');
+    setSourceUrl(item.sourceUrl || '');
+    setSummary(item.summary || '');
+    setBody(item.body || '');
+    setTitleSt(item.titleSt || '');
+    setSummarySt(item.summarySt || '');
+    setBodySt(item.bodySt || '');
+    setConfirmed(false);
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const deleteDraft = (id: number) => {
+    onSaveCustomArticles(customArticles.filter((item) => item.id !== id));
+    setConfirmDeleteId(null);
+    onShowToast('Draft deleted.');
+  };
+
+  const pendingReviews = customArticles.filter((item) => item.status === 'pending_review').slice().reverse();
+  const myArticles = session?.role === 'publisher'
+    ? customArticles
+        .filter((item) => item.author === session.username)
+        .slice()
+        .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''))
+    : [];
+  const countByStatus = (st: ArticleStatus) =>
+    myArticles.filter((item) => (item.status || 'published') === st).length;
 
   return (
-    <section
-      id="publish"
-      className="py-16 md:py-20 bg-[#f5f8fb] border-y border-slate-200"
-      aria-labelledby="publish-heading"
-    >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
-          <div>
-            <p className="text-[11px] font-bold tracking-[0.14em] uppercase text-[#1c5d91]">
-              {language === "st" ? "Sebaka sa Baphatlalatsi" : "Editorial & Publishing Demo"}
-            </p>
-            <h2
-              id="publish-heading"
-              className="text-2xl md:text-3xl font-bold text-[#112a46] mt-1"
-            >
-              {language === "st"
-                ? "Ho ngola, ho hlahloba le ho phatlalatsa litaba"
-                : "Publish & editorial review workspace"}
-            </h2>
-            <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
-              Role-based publishing workflow stored locally in this browser session. Publishers
-              create drafts and submit them for Admin verification before appearing on the public
-              portal.
-            </p>
+    <section className="publish-section" id="publish">
+      <div className="container publish-inner">
+        <div className="publish-intro">
+          <div className="eyebrow">CONTENT MANAGEMENT DEMO</div>
+          <h2>Publisher dashboard</h2>
+          <p>
+            Add a sample article to see how an authorised publishing workflow could work. This demo
+            saves entries only in this browser and is not secure enough for real government
+            publishing.
+          </p>
+          <div className="dashboard-note">
+            <strong>Important:</strong> For a live service, user accounts, server-side validation,
+            approvals and a database must be implemented before publishing official information.
           </div>
-
-          {session && (
-            <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5">
-              <div className="text-xs">
-                <span className="text-slate-500">Signed in as </span>
-                <strong className="text-[#112a46]">{session.username}</strong>
-                <span className="text-slate-400 mx-1.5">·</span>
-                <span className="font-semibold uppercase text-[11px] text-[#1c5d91]">
-                  {session.role}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 hover:bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-700 cursor-pointer"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Sign out</span>
-              </button>
-            </div>
-          )}
         </div>
 
-        {!session ? (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <form
-              onSubmit={handleLoginSubmit}
-              className="lg:col-span-6 rounded-xl border border-slate-200 bg-white p-6 md:p-7 space-y-4"
-            >
-              <div className="flex items-center gap-2 text-[#112a46]">
-                <Lock className="w-4 h-4 text-[#1c5d91]" />
-                <h3 className="text-lg font-bold">Sign in to publishing workspace</h3>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Authorized ministry information officers and portal administrators sign in below.
-                Demo administrator account:{" "}
-                <code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
-                  admin
-                </code>{" "}
-                /{" "}
-                <code className="font-mono text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
-                  Admin123!
-                </code>
-              </p>
-
-              <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="pub-login-user"
-                    className="block text-xs font-semibold text-slate-700 mb-1"
-                  >
-                    Username
-                  </label>
-                  <input
-                    id="pub-login-user"
-                    type="text"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    placeholder="e.g. admin"
-                    autoComplete="username"
-                    className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                  />
+        <div className="publisher-controls">
+          <div className="publisher-auth-wrap" id="publisherAuthWrap">
+            {!session && (
+              <form className="publisher-form auth-form" id="loginForm" onSubmit={handleLogin}>
+                <div className="form-heading">
+                  <span className="dashboard-icon">🔐</span>
+                  <div>
+                    <strong>Publisher portal login</strong>
+                    <small>Sign in with details supplied by the administrator</small>
+                  </div>
                 </div>
-                <div>
-                  <label
-                    htmlFor="pub-login-pass"
-                    className="block text-xs font-semibold text-slate-700 mb-1"
-                  >
-                    Password
-                  </label>
-                  <input
-                    id="pub-login-pass"
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Enter password"
-                    autoComplete="current-password"
-                    className="w-full h-10 rounded-lg border border-slate-300 px-3 text-sm text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                  />
-                </div>
-              </div>
-
-              {loginError && (
-                <p className="text-xs font-semibold text-red-700" role="alert">
-                  {loginError}
-                </p>
-              )}
-
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <button
-                  type="submit"
-                  className="rounded-lg bg-[#112a46] hover:bg-[#1c5d91] text-white px-5 py-2.5 text-xs font-bold transition-colors cursor-pointer"
-                >
+                <label htmlFor="loginUsername">Username *</label>
+                <input
+                  id="loginUsername"
+                  autoComplete="username"
+                  required
+                  placeholder="Enter your username"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                />
+                <label htmlFor="loginPassword">Password *</label>
+                <input
+                  id="loginPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  placeholder="Enter your password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                />
+                <button type="submit" className="button button-primary">
                   Sign in
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLoginUsername("admin");
-                    setLoginPassword("Admin123!");
-                    setLoginError("");
-                  }}
-                  className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-2.5 text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Fill demo admin
-                </button>
-              </div>
-            </form>
-
-            <div className="lg:col-span-6 rounded-xl border border-slate-200 bg-white p-6 md:p-7 space-y-4">
-              <div className="flex items-center gap-2 text-[#112a46]">
-                <ShieldCheck className="w-4 h-4 text-[#1e6b52]" />
-                <h3 className="text-lg font-bold">How editorial verification works</h3>
-              </div>
-              <ol className="space-y-3 text-xs md:text-[13px] text-slate-600 list-decimal pl-4">
-                <li>
-                  <strong className="text-slate-800">Admin provisions publisher accounts:</strong>{" "}
-                  Only the portal Admin can create publisher logins (currently{" "}
-                  <span className="tabular-nums font-semibold">{demoUsers.length}</span>{" "}
-                  publisher account{demoUsers.length === 1 ? "" : "s"} created in this browser).
-                </li>
-                <li>
-                  <strong className="text-slate-800">Draft & submit for review:</strong>{" "}
-                  Publishers draft notices with optional Sesotho translations and official{" "}
-                  <code className="font-mono text-[11px]">gov.ls</code> reference URLs.
-                </li>
-                <li>
-                  <strong className="text-slate-800">Admin approval gate:</strong> Pending
-                  submissions enter the Admin Review Queue for approval or change requests before
-                  going live in the public feed.
-                </li>
-                <li>
-                  <strong className="text-slate-800">SMS alert drafts (Admin-only):</strong>{" "}
-                  Administrators can prepare plain-text district SMS alert drafts for demonstration
-                  (no live SMS messages are transmitted).
-                </li>
-              </ol>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Workspace Stats Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Workspace articles", value: stats.total },
-                { label: "Drafts", value: stats.drafts },
-                { label: "Pending review", value: stats.pending },
-                { label: "Published live", value: stats.published },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-3.5"
-                >
-                  <p className="text-[11px] font-semibold text-slate-500">{stat.label}</p>
-                  <p className="text-2xl font-bold text-[#112a46] tabular-nums mt-0.5">
-                    {stat.value}
+                <p className="form-help">
+                  Demo administrator account: <strong>admin</strong> / <strong>Admin123!</strong>.
+                  Change this in a real system; this browser-only demo is not secure.
+                </p>
+                {loginMessage && (
+                  <p className="auth-message" id="loginMessage" aria-live="polite">
+                    {loginMessage}
                   </p>
-                </div>
-              ))}
-            </div>
-
-            {/* ADMIN CONTROLS */}
-            {session.role === "admin" && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Create Publisher + Review Queue */}
-                <div className="lg:col-span-7 space-y-6">
-                  {/* Pending Review Queue */}
-                  <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-base font-bold text-[#112a46]">
-                        Admin Review Queue ({pendingReviewQueue.length})
-                      </h3>
-                      <span className="text-xs text-slate-500">
-                        Approve before public visibility
-                      </span>
-                    </div>
-
-                    {pendingReviewQueue.length === 0 ? (
-                      <p className="text-xs text-slate-500 py-3">
-                        No articles are currently awaiting admin review.
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {pendingReviewQueue.map((item) => (
-                          <div
-                            key={item.id}
-                            className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3"
-                          >
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                                <span className="font-semibold text-[#1c5d91]">
-                                  {item.category}
-                                </span>
-                                <span>·</span>
-                                <span>{item.ministry}</span>
-                                <span>·</span>
-                                <span>Author: {item.author}</span>
-                                <span>·</span>
-                                <span className="tabular-nums">{item.date}</span>
-                              </div>
-                              <h4 className="text-sm font-bold text-[#112a46] mt-1">
-                                {item.title}
-                              </h4>
-                              <p className="text-xs text-slate-600 mt-1">{item.summary}</p>
-                              {item.sourceUrl && (
-                                <a
-                                  href={item.sourceUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1c5d91] underline mt-1.5"
-                                >
-                                  <span>Inspect source URL</span>
-                                  <ExternalLink className="w-3 h-3" />
-                                </a>
-                              )}
-                            </div>
-
-                            <div>
-                              <label
-                                htmlFor={`review-note-${item.id}`}
-                                className="block text-[11px] font-semibold text-slate-600 mb-1"
-                              >
-                                Review note (optional for approval, helpful when requesting changes)
-                              </label>
-                              <textarea
-                                id={`review-note-${item.id}`}
-                                rows={2}
-                                value={reviewNotes[item.id] ?? ""}
-                                onChange={(e) =>
-                                  setReviewNotes((prev) => ({
-                                    ...prev,
-                                    [item.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Add verification feedback for the publisher..."
-                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#1c5d91]"
-                              />
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onAdminReview(
-                                    item.id,
-                                    "published",
-                                    reviewNotes[item.id] || ""
-                                  )
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e6b52] hover:bg-[#15523e] text-white px-3.5 py-2 text-xs font-bold cursor-pointer"
-                              >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Approve and publish</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  onAdminReview(
-                                    item.id,
-                                    "changes_requested",
-                                    reviewNotes[item.id] ||
-                                      "Please verify ministry dates and source link."
-                                  )
-                                }
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 px-3.5 py-2 text-xs font-bold cursor-pointer"
-                              >
-                                <MessageSquareWarning className="w-3.5 h-3.5" />
-                                <span>Request changes</span>
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Create Publisher Account */}
-                  <form
-                    onSubmit={handleCreatePublisherSubmit}
-                    className="rounded-xl border border-slate-200 bg-white p-6 space-y-4"
-                  >
-                    <div className="flex items-center gap-2">
-                      <UserPlus className="w-4 h-4 text-[#1c5d91]" />
-                      <h3 className="text-base font-bold text-[#112a46]">
-                        Create publisher account
-                      </h3>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label
-                          htmlFor="new-pub-user"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Publisher username
-                        </label>
-                        <input
-                          id="new-pub-user"
-                          type="text"
-                          value={newPubUsername}
-                          onChange={(e) => setNewPubUsername(e.target.value)}
-                          placeholder="e.g. health_officer"
-                          className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="new-pub-pass"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Temporary password
-                        </label>
-                        <input
-                          id="new-pub-pass"
-                          type="text"
-                          value={newPubPassword}
-                          onChange={(e) => setNewPubPassword(e.target.value)}
-                          placeholder="Min. 6 characters"
-                          className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                        />
-                      </div>
-                    </div>
-
-                    {pubFormError && (
-                      <p className="text-xs font-semibold text-red-700">{pubFormError}</p>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-[#112a46] hover:bg-[#1c5d91] text-white px-4 py-2 text-xs font-bold cursor-pointer"
-                    >
-                      Create publisher login
-                    </button>
-
-                    {createdCredentials && (
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 flex flex-wrap items-center justify-between gap-3">
-                        <div className="text-xs text-emerald-950">
-                          <p className="font-bold">Publisher account ready (local demo)</p>
-                          <p className="font-mono text-[11px] mt-0.5">
-                            {createdCredentials.username} / {createdCredentials.password}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={copyCredentials}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100 cursor-pointer"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy credentials</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {demoUsers.length > 0 && (
-                      <div className="pt-2 border-t border-slate-200">
-                        <p className="text-[11px] font-semibold text-slate-500 mb-1.5">
-                          Active publisher accounts ({demoUsers.length}):
-                        </p>
-                        <div className="flex flex-wrap gap-3 text-xs text-slate-700">
-                          {demoUsers.map((u) => (
-                            <span key={u.username} className="font-mono text-[11px]">
-                              {u.username}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </form>
-                </div>
-
-                {/* Admin SMS Alert Drafts */}
-                <div className="lg:col-span-5 rounded-xl border border-slate-200 bg-white p-6 space-y-4">
-                  <div>
-                    <h3 className="text-base font-bold text-[#112a46]">
-                      Admin SMS Alert Drafts
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Demo-only local drafts for low-bandwidth citizen SMS alerts. No live SMS
-                      messages are sent.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleSmsSubmit} className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label
-                          htmlFor="sms-district"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Target district
-                        </label>
-                        <select
-                          id="sms-district"
-                          value={smsDistrict}
-                          onChange={(e) => setSmsDistrict(e.target.value)}
-                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-800 bg-white"
-                        >
-                          <option value="All districts">All districts</option>
-                          {LESOTHO_DISTRICTS.map((d) => (
-                            <option key={d.name} value={d.name}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="sms-topic"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Topic
-                        </label>
-                        <select
-                          id="sms-topic"
-                          value={smsTopic}
-                          onChange={(e) => setSmsTopic(e.target.value)}
-                          className="w-full h-9 rounded-lg border border-slate-300 px-2.5 text-xs text-slate-800 bg-white"
-                        >
-                          <option value="Public Notice">Public Notice</option>
-                          <option value="Health Advisory">Health Advisory</option>
-                          <option value="Education Update">Education Update</option>
-                          <option value="Road & Weather">Road & Weather</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label
-                          htmlFor="sms-body"
-                          className="text-xs font-semibold text-slate-700"
-                        >
-                          Alert message
-                        </label>
-                        <span className="text-[11px] text-slate-500 tabular-nums">
-                          {smsMessage.length} / 320
-                        </span>
-                      </div>
-                      <textarea
-                        id="sms-body"
-                        rows={3}
-                        maxLength={320}
-                        value={smsMessage}
-                        onChange={(e) => setSmsMessage(e.target.value)}
-                        placeholder="LESOTHO GOVT: Draft plain-text alert for citizens..."
-                        className="w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-[#1c5d91] hover:bg-[#112a46] text-white px-4 py-2 text-xs font-bold cursor-pointer"
-                    >
-                      Save SMS alert draft
-                    </button>
-                  </form>
-
-                  <div className="pt-3 border-t border-slate-200 space-y-2.5">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                      Saved SMS drafts ({smsDrafts.length})
-                    </p>
-                    {smsDrafts.length === 0 ? (
-                      <p className="text-xs text-slate-500">No SMS alert drafts saved yet.</p>
-                    ) : (
-                      <ul className="space-y-2 max-h-56 overflow-y-auto">
-                        {smsDrafts.map((draft) => (
-                          <li
-                            key={draft.id}
-                            className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
-                          >
-                            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 mb-1">
-                              <span className="font-semibold text-[#112a46]">
-                                {draft.district} · {draft.topic}
-                              </span>
-                              <span className="tabular-nums">
-                                {new Date(draft.createdAt).toLocaleDateString("en-GB")}
-                              </span>
-                            </div>
-                            <p className="text-slate-700">{draft.message}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-              </div>
+                )}
+              </form>
             )}
 
-            {/* PUBLISHER & ADMIN ARTICLE COMPOSER + MY ARTICLES */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              {/* Create / Edit Article Form */}
-              <div className="lg:col-span-7 rounded-xl border border-slate-200 bg-white p-6 space-y-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <FilePlus2 className="w-4 h-4 text-[#1c5d91]" />
-                    <h3 className="text-base font-bold text-[#112a46]">
-                      {editingId ? "Edit article draft" : "Create government news article"}
-                    </h3>
+            {session?.role === 'admin' && (
+              <div className="publisher-form admin-panel" id="adminPanel">
+                <div className="form-heading">
+                  <span className="dashboard-icon">♙</span>
+                  <div>
+                    <strong>Administrator dashboard</strong>
+                    <small>Create a publisher account</small>
                   </div>
+                </div>
+                <p className="form-help">
+                  Create a username and temporary password, then give these details to the
+                  publisher securely.
+                </p>
+                <form id="createPublisherForm" onSubmit={handleCreatePublisher}>
+                  <label htmlFor="newPublisherUsername">Publisher username *</label>
+                  <input
+                    id="newPublisherUsername"
+                    required
+                    minLength={3}
+                    maxLength={40}
+                    autoComplete="off"
+                    placeholder="e.g. news.publisher"
+                    value={newPubUser}
+                    onChange={(e) => setNewPubUser(e.target.value)}
+                  />
+                  <label htmlFor="newPublisherPassword">Temporary password *</label>
+                  <input
+                    id="newPublisherPassword"
+                    type="password"
+                    required
+                    minLength={8}
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    value={newPubPass}
+                    onChange={(e) => setNewPubPass(e.target.value)}
+                  />
+                  <button type="submit" className="button button-primary">
+                    Create publisher login
+                  </button>
+                </form>
+
+                {createdCredentials && (
+                  <div className="credentials-result" id="credentialsResult" aria-live="polite">
+                    <strong>Publisher account created</strong>
+                    <p>
+                      Username: <code>{createdCredentials.username}</code>
+                    </p>
+                    <p>
+                      Temporary password: <code>{createdCredentials.password}</code>
+                    </p>
+                    <p>
+                      Give these details directly to the publisher. Do not post them publicly.
+                    </p>
+                    <button
+                      type="button"
+                      className="button button-outline"
+                      id="copyCredentials"
+                      onClick={handleCopyCredentials}
+                    >
+                      Copy login details
+                    </button>
+                  </div>
+                )}
+
+                <div className="admin-review-manager">
+                  <div className="form-heading">
+                    <span className="dashboard-icon">✓</span>
+                    <div>
+                      <strong>Review publisher submissions</strong>
+                      <small>Approve stories before they appear publicly</small>
+                    </div>
+                  </div>
+                  <p className="form-help">
+                    Review each submitted story and approve it for the public news page or request
+                    changes from the publisher.
+                  </p>
+                  <div className="submission-list" id="adminReviewList">
+                    {pendingReviews.length === 0 ? (
+                      <p className="form-help">No submissions are waiting for review.</p>
+                    ) : (
+                      pendingReviews.map((item) => (
+                        <article className="submission-card" key={item.id}>
+                          <strong>{item.title || 'Untitled article'}</strong>
+                          <p className="submission-meta">
+                            {item.category} · Submitted by {item.author || 'publisher'} ·{' '}
+                            {item.ministry || 'Source not provided'}
+                          </p>
+                          <p>{item.summary || 'No summary entered.'}</p>
+                          <p className="submission-meta">
+                            {item.sourceUrl
+                              ? `Source: ${item.sourceUrl}`
+                              : 'No official source URL supplied.'}
+                          </p>
+                          <label>
+                            Review note (optional)
+                            <textarea
+                              rows={2}
+                              maxLength={300}
+                              placeholder="Explain any changes needed"
+                              value={reviewNotes[item.id] || ''}
+                              onChange={(e) =>
+                                setReviewNotes((prev) => ({ ...prev, [item.id]: e.target.value }))
+                              }
+                            />
+                          </label>
+                          <div className="submission-actions">
+                            <button
+                              type="button"
+                              className="button button-primary"
+                              onClick={() => handleReviewArticle(item.id, 'published')}
+                            >
+                              Approve and publish
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-outline"
+                              onClick={() => handleReviewArticle(item.id, 'changes_requested')}
+                            >
+                              Request changes
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="admin-sms-manager">
+                  <div className="form-heading">
+                    <span className="dashboard-icon">✉</span>
+                    <div>
+                      <strong>Manage government SMS alerts</strong>
+                      <small>Administrator only · demonstration mode</small>
+                    </div>
+                  </div>
+                  <p className="form-help">
+                    Prepare an official alert for a selected district or all districts. This demo
+                    saves a draft; it does not send a text message.
+                  </p>
+                  <form id="adminSmsForm" onSubmit={handleCreateSmsDraft}>
+                    <label htmlFor="adminSmsDistrict">Target audience *</label>
+                    <select
+                      id="adminSmsDistrict"
+                      required
+                      value={smsDistrict}
+                      onChange={(e) => setSmsDistrict(e.target.value)}
+                    >
+                      <option value="All districts">All districts</option>
+                      {DISTRICTS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="adminSmsTopic">Alert category *</label>
+                    <select
+                      id="adminSmsTopic"
+                      required
+                      value={smsTopic}
+                      onChange={(e) => setSmsTopic(e.target.value)}
+                    >
+                      <option>Public Notices</option>
+                      <option>Health</option>
+                      <option>Education</option>
+                      <option>Development</option>
+                      <option>Emergency</option>
+                    </select>
+                    <label htmlFor="adminSmsMessage">SMS message *</label>
+                    <textarea
+                      id="adminSmsMessage"
+                      required
+                      maxLength={320}
+                      rows={4}
+                      placeholder="Write a short, verified public announcement"
+                      value={smsMessage}
+                      onChange={(e) => setSmsMessage(e.target.value)}
+                    />
+                    <div className="sms-character-count">
+                      <span id="adminSmsCharCount">{smsMessage.length}</span>/320 characters
+                    </div>
+                    <button type="submit" className="button button-primary">
+                      Prepare SMS alert draft
+                    </button>
+                  </form>
+
+                  {smsResult && (
+                    <div className="admin-sms-result" id="adminSmsResult" aria-live="polite">
+                      {smsResult}
+                    </div>
+                  )}
+
+                  <div className="admin-sms-history" id="adminSmsHistory">
+                    <strong>Prepared alert drafts ({smsDrafts.length})</strong>
+                    {smsDrafts.length === 0 ? (
+                      <p className="form-help">No alert drafts have been prepared in this browser.</p>
+                    ) : (
+                      smsDrafts
+                        .slice()
+                        .reverse()
+                        .map((draft, idx) => (
+                          <div className="admin-sms-draft" key={`${draft.createdAt}-${idx}`}>
+                            <strong>
+                              {draft.topic} · {draft.district}
+                            </strong>
+                            <p>{draft.message}</p>
+                            <small>
+                              Prepared by {draft.createdBy} ·{' '}
+                              {new Date(draft.createdAt).toLocaleString()}
+                            </small>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="button button-outline auth-logout"
+                  onClick={handleLogout}
+                >
+                  Log out
+                </button>
+              </div>
+            )}
+          </div>
+
+          {session?.role === 'publisher' && (
+            <>
+              <div className="publisher-form publisher-workspace" id="publisherWorkspace">
+                <div className="form-heading">
+                  <span className="dashboard-icon">✓</span>
+                  <div>
+                    <strong>Publisher workspace</strong>
+                    <small id="publisherWelcome">Signed in as {session.username}</small>
+                  </div>
+                </div>
+                <p className="form-help">
+                  Prepare stories, save unfinished work as a draft, and submit completed articles
+                  for administrator review. Only approved articles appear in public news.
+                </p>
+
+                <div className="publisher-stats" id="publisherStats" aria-live="polite">
+                  <div className="publisher-stat">
+                    <strong>{myArticles.length}</strong>
+                    <span>Total articles</span>
+                  </div>
+                  <div className="publisher-stat">
+                    <strong>{countByStatus('draft')}</strong>
+                    <span>Drafts</span>
+                  </div>
+                  <div className="publisher-stat">
+                    <strong>{countByStatus('pending_review')}</strong>
+                    <span>Pending review</span>
+                  </div>
+                  <div className="publisher-stat">
+                    <strong>{countByStatus('published')}</strong>
+                    <span>Published</span>
+                  </div>
+                </div>
+
+                <div className="publisher-my-articles">
+                  <div className="form-heading">
+                    <span className="dashboard-icon">▤</span>
+                    <div>
+                      <strong>My articles</strong>
+                      <small>Track drafts, review status and published stories</small>
+                    </div>
+                  </div>
+                  <div className="submission-list" id="publisherArticleList">
+                    {myArticles.length === 0 ? (
+                      <p className="form-help">
+                        You have not created any articles yet. Use the form below to start a story.
+                      </p>
+                    ) : (
+                      myArticles.map((item) => {
+                        const st = item.status || 'published';
+                        const canEdit = ['draft', 'changes_requested', 'rejected'].includes(st);
+                        return (
+                          <article className="submission-card" key={item.id}>
+                            <div className="submission-card-head">
+                              <strong>{item.title || 'Untitled draft'}</strong>
+                              <span className={`submission-status status-${st}`}>
+                                {statusLabel(item.status)}
+                              </span>
+                            </div>
+                            <p className="submission-meta">
+                              {item.category || 'No category'} · Updated{' '}
+                              {new Date(item.updatedAt || item.createdAt || Date.now()).toLocaleDateString()}
+                            </p>
+                            {item.reviewNote && (
+                              <p className="review-note">Administrator note: {item.reviewNote}</p>
+                            )}
+                            <div className="submission-actions">
+                              {canEdit && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="button button-outline"
+                                    onClick={() => loadForEdit(item)}
+                                  >
+                                    Edit
+                                  </button>
+                                  {confirmDeleteId === item.id ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="button button-outline danger-button"
+                                        onClick={() => deleteDraft(item.id)}
+                                      >
+                                        Confirm delete
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="button button-outline"
+                                        onClick={() => setConfirmDeleteId(null)}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="button button-outline danger-button"
+                                      onClick={() => setConfirmDeleteId(item.id)}
+                                    >
+                                      Delete draft
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {st === 'published' && (
+                                <button
+                                  type="button"
+                                  className="button button-outline"
+                                  onClick={() => {
+                                    document
+                                      .getElementById('latest')
+                                      ?.scrollIntoView({ behavior: 'smooth' });
+                                    onOpenArticle(item);
+                                  }}
+                                >
+                                  View public article
+                                </button>
+                              )}
+                            </div>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <div className="admin-sms-manager publisher-sms-view">
+                  <div className="form-heading">
+                    <span className="dashboard-icon">✉</span>
+                    <div>
+                      <strong>Government SMS alerts</strong>
+                      <small>Publisher dashboard · view only</small>
+                    </div>
+                  </div>
+                  <p className="form-help">
+                    View alert drafts prepared by the administrator. Only the administrator can
+                    create or manage official SMS alert drafts.
+                  </p>
+                  <div className="admin-sms-history" id="publisherSmsHistory">
+                    <strong>Prepared alert drafts ({smsDrafts.length})</strong>
+                    {smsDrafts.length === 0 ? (
+                      <p className="form-help">No alert drafts have been prepared in this browser.</p>
+                    ) : (
+                      smsDrafts
+                        .slice()
+                        .reverse()
+                        .map((draft, idx) => (
+                          <div className="admin-sms-draft" key={`${draft.createdAt}-${idx}`}>
+                            <strong>
+                              {draft.topic} · {draft.district}
+                            </strong>
+                            <p>{draft.message}</p>
+                            <small>
+                              Prepared by {draft.createdBy} ·{' '}
+                              {new Date(draft.createdAt).toLocaleString()}
+                            </small>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="button button-outline auth-logout"
+                  onClick={handleLogout}
+                >
+                  Log out
+                </button>
+              </div>
+
+              <form
+                ref={editorRef}
+                className="publisher-form"
+                id="publisherForm"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSavePublisherArticle('pending_review');
+                }}
+              >
+                <div className="form-heading">
+                  <span className="dashboard-icon">＋</span>
+                  <div>
+                    <strong id="publisherFormHeading">
+                      {editingId ? 'Edit news story' : 'Create a news story'}
+                    </strong>
+                    <small>Save as a draft or submit for administrator review</small>
+                  </div>
+                </div>
+
+                <label htmlFor="publisherTitle">Article title *</label>
+                <input
+                  id="publisherTitle"
+                  required
+                  maxLength={140}
+                  placeholder="Enter a clear article title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+
+                <div className="archive-form-row">
+                  <div>
+                    <label htmlFor="publisherCategory">Category *</label>
+                    <select
+                      id="publisherCategory"
+                      required
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value as ArticleCategory)}
+                    >
+                      <option value="Public Notices">Public Notices</option>
+                      <option value="Health">Health</option>
+                      <option value="Education">Education</option>
+                      <option value="Development">Development</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="publisherDate">Publication date *</label>
+                    <input
+                      id="publisherDate"
+                      type="date"
+                      required
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <label htmlFor="publisherMinistry">Ministry / source *</label>
+                <input
+                  id="publisherMinistry"
+                  list="lesothoMinistriesList"
+                  required
+                  maxLength={100}
+                  placeholder="Name of responsible ministry"
+                  value={ministry}
+                  onChange={(e) => setMinistry(e.target.value)}
+                />
+                <datalist id="lesothoMinistriesList">
+                  {LESOTHO_MINISTRIES.map((m) => (
+                    <option key={m.id} value={m.name} />
+                  ))}
+                  <option value="Government Information Desk" />
+                </datalist>
+
+                <label htmlFor="publisherSource">Official source URL (optional)</label>
+                <input
+                  id="publisherSource"
+                  type="url"
+                  placeholder="https://www.gov.ls/..."
+                  value={sourceUrl}
+                  onChange={(e) => setSourceUrl(e.target.value)}
+                />
+
+                <label htmlFor="publisherSummary">Short summary *</label>
+                <textarea
+                  id="publisherSummary"
+                  required
+                  maxLength={280}
+                  rows={3}
+                  placeholder="Summarise the story in plain language"
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                />
+
+                <label htmlFor="publisherBody">Article content (English) *</label>
+                <textarea
+                  id="publisherBody"
+                  required
+                  rows={5}
+                  placeholder="Enter the article text"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                />
+
+                <details className="translation-fields">
+                  <summary>Optional: add a Sesotho version</summary>
+                  <label htmlFor="publisherTitleSt">Article title in Sesotho</label>
+                  <input
+                    id="publisherTitleSt"
+                    maxLength={140}
+                    placeholder="Sehlooho sa litaba ka Sesotho"
+                    value={titleSt}
+                    onChange={(e) => setTitleSt(e.target.value)}
+                  />
+                  <label htmlFor="publisherSummarySt">Summary in Sesotho</label>
+                  <textarea
+                    id="publisherSummarySt"
+                    maxLength={280}
+                    rows={3}
+                    placeholder="Kakaretso ea litaba ka Sesotho"
+                    value={summarySt}
+                    onChange={(e) => setSummarySt(e.target.value)}
+                  />
+                  <label htmlFor="publisherBodySt">Article content in Sesotho</label>
+                  <textarea
+                    id="publisherBodySt"
+                    rows={5}
+                    placeholder="Litaba ka Sesotho"
+                    value={bodySt}
+                    onChange={(e) => setBodySt(e.target.value)}
+                  />
+                  <p className="form-help">
+                    Enter a human-reviewed Sesotho translation. The website does not translate
+                    articles automatically.
+                  </p>
+                </details>
+
+                <label className="publisher-check">
+                  <input
+                    id="publisherConfirmed"
+                    type="checkbox"
+                    required
+                    checked={confirmed}
+                    onChange={(e) => setConfirmed(e.target.checked)}
+                  />
+                  I confirm this article has been checked and is ready for administrator review.
+                </label>
+
+                <div className="publisher-form-actions">
+                  <button
+                    type="button"
+                    className="button button-outline"
+                    id="saveDraftButton"
+                    onClick={() => handleSavePublisherArticle('draft')}
+                  >
+                    Save as draft
+                  </button>
+                  <button type="submit" className="button button-primary" id="submitReviewButton">
+                    {editingId ? 'Resubmit for review' : 'Submit for review'}
+                  </button>
                   {editingId && (
                     <button
                       type="button"
-                      onClick={resetArticleForm}
-                      className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer"
+                      className="button button-outline"
+                      id="cancelEditButton"
+                      onClick={resetEditor}
                     >
                       Cancel editing
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="art-title"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Headline (English) *
-                    </label>
-                    <input
-                      id="art-title"
-                      type="text"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Clear public-friendly headline"
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="art-category"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Category *
-                    </label>
-                    <select
-                      id="art-category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value as Category)}
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 bg-white"
-                    >
-                      <option value="Public Notices">Public Notices</option>
-                      <option value="Official Documents">Official Documents</option>
-                      <option value="Health">Health</option>
-                      <option value="Education">Education</option>
-                      <option value="Development">Development</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="art-ministry"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Responsible Ministry / Office *
-                    </label>
-                    <input
-                      id="art-ministry"
-                      type="text"
-                      value={ministry}
-                      onChange={(e) => setMinistry(e.target.value)}
-                      placeholder="e.g. Ministry of Health"
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="art-date"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Publication date
-                    </label>
-                    <input
-                      id="art-date"
-                      type="date"
-                      value={date}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 bg-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label
-                      htmlFor="art-district"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      District scope
-                    </label>
-                    <select
-                      id="art-district"
-                      value={district}
-                      onChange={(e) => setDistrict(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 bg-white"
-                    >
-                      <option value="All districts">All districts</option>
-                      {LESOTHO_DISTRICTS.map((d) => (
-                        <option key={d.name} value={d.name}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="art-url"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Official source URL (optional)
-                    </label>
-                    <input
-                      id="art-url"
-                      type="url"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      placeholder="https://www.gov.ls/..."
-                      className="w-full h-10 rounded-lg border border-slate-300 px-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="art-summary"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Plain-language summary *
-                    </label>
-                    <textarea
-                      id="art-summary"
-                      rows={2}
-                      value={summary}
-                      onChange={(e) => setSummary(e.target.value)}
-                      placeholder="Brief 1-2 sentence overview for readers"
-                      className="w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label
-                      htmlFor="art-body"
-                      className="block text-xs font-semibold text-slate-700 mb-1"
-                    >
-                      Full article text *
-                    </label>
-                    <textarea
-                      id="art-body"
-                      rows={4}
-                      value={body}
-                      onChange={(e) => setBody(e.target.value)}
-                      placeholder="Full public notice details, eligibility, deadlines, and contact steps..."
-                      className="w-full rounded-lg border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:border-[#1c5d91]"
-                    />
-                  </div>
-                </div>
-
-                {/* Collapsible Sesotho translation fields */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setShowSesothoFields((prev) => !prev)}
-                    className="w-full flex items-center justify-between text-xs font-bold text-[#112a46] cursor-pointer"
-                  >
-                    <span>Optional Sesotho translation fields</span>
-                    {showSesothoFields ? (
-                      <ChevronUp className="w-4 h-4" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  {showSesothoFields && (
-                    <div className="mt-3 space-y-3 pt-3 border-t border-slate-200">
-                      <div>
-                        <label
-                          htmlFor="art-title-st"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Sesotho headline
-                        </label>
-                        <input
-                          id="art-title-st"
-                          type="text"
-                          value={titleSt}
-                          onChange={(e) => setTitleSt(e.target.value)}
-                          placeholder="Sehlooho ka Sesotho"
-                          className="w-full h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-900"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="art-summary-st"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Sesotho summary
-                        </label>
-                        <textarea
-                          id="art-summary-st"
-                          rows={2}
-                          value={summarySt}
-                          onChange={(e) => setSummarySt(e.target.value)}
-                          placeholder="Kakaretso ka Sesotho"
-                          className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900"
-                        />
-                      </div>
-                      <div>
-                        <label
-                          htmlFor="art-body-st"
-                          className="block text-xs font-semibold text-slate-700 mb-1"
-                        >
-                          Sesotho full text
-                        </label>
-                        <textarea
-                          id="art-body-st"
-                          rows={3}
-                          value={bodySt}
-                          onChange={(e) => setBodySt(e.target.value)}
-                          placeholder="Litaba tse feletseng ka Sesotho"
-                          className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-xs text-slate-900"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {articleFormError && (
-                  <p className="text-xs font-semibold text-red-700" role="alert">
-                    {articleFormError}
-                  </p>
-                )}
-
-                <div className="flex flex-wrap gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => handleArticleSubmit("draft")}
-                    className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-4 py-2.5 text-xs font-bold cursor-pointer"
-                  >
-                    Save as draft
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleArticleSubmit("pending_review")}
-                    className="rounded-lg bg-[#1c5d91] hover:bg-[#112a46] text-white px-4 py-2.5 text-xs font-bold cursor-pointer"
-                  >
-                    Submit for admin review
-                  </button>
-                </div>
-              </div>
-
-              {/* My Articles List + Read-only SMS Drafts for Publishers */}
-              <div className="lg:col-span-5 space-y-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
-                  <h3 className="text-base font-bold text-[#112a46]">
-                    {session.role === "admin"
-                      ? `All submitted articles (${myArticles.length})`
-                      : `My articles (${myArticles.length})`}
-                  </h3>
-
-                  {myArticles.length === 0 ? (
-                    <p className="text-xs text-slate-500">
-                      No custom articles drafted yet. Use the form on the left to create a draft or
-                      submit an article for review.
-                    </p>
-                  ) : (
-                    <ul className="divide-y divide-slate-200">
-                      {myArticles.map((item) => {
-                        const status = item.status || "draft";
-                        const canEdit =
-                          status === "draft" ||
-                          status === "changes_requested" ||
-                          session.role === "admin";
-
-                        return (
-                          <li key={item.id} className="py-3.5 first:pt-0 last:pb-0 space-y-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-[#112a46] truncate">
-                                  {item.title}
-                                </p>
-                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                  <span className={`font-bold ${STATUS_STYLE[status]}`}>
-                                    {STATUS_LABEL[status]}
-                                  </span>
-                                  <span> · </span>
-                                  <span>{item.category}</span>
-                                  <span> · </span>
-                                  <span className="tabular-nums">{item.date}</span>
-                                </p>
-                              </div>
-                            </div>
-
-                            {item.reviewNote && (
-                              <p className="text-[11px] rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-amber-900">
-                                <strong>Admin note:</strong> {item.reviewNote}
-                              </p>
-                            )}
-
-                            <div className="flex flex-wrap items-center gap-2">
-                              {canEdit && (
-                                <button
-                                  type="button"
-                                  onClick={() => populateForEdit(item)}
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1c5d91] hover:text-[#112a46] cursor-pointer"
-                                >
-                                  <Edit3 className="w-3 h-3" />
-                                  <span>Edit</span>
-                                </button>
-                              )}
-
-                              {status === "published" && (
-                                <button
-                                  type="button"
-                                  onClick={() => onViewPublicArticle(item)}
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1e6b52] hover:underline cursor-pointer"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  <span>View public article</span>
-                                </button>
-                              )}
-
-                              {status !== "published" && (
-                                <>
-                                  {confirmDeleteId === item.id ? (
-                                    <span className="inline-flex items-center gap-1.5 text-[11px]">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          onDeleteDraft(item.id);
-                                          setConfirmDeleteId(null);
-                                        }}
-                                        className="font-bold text-red-700 hover:underline cursor-pointer"
-                                      >
-                                        Confirm delete
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmDeleteId(null)}
-                                        className="text-slate-500 hover:text-slate-800 cursor-pointer"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDeleteId(item.id)}
-                                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-red-700 cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                      <span>Delete</span>
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-
-                {session.role === "publisher" && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-3">
-                    <h3 className="text-sm font-bold text-[#112a46]">
-                      Admin SMS Alert Drafts (Read-only)
-                    </h3>
-                    {smsDrafts.length === 0 ? (
-                      <p className="text-xs text-slate-500">
-                        No admin SMS alert drafts have been prepared yet.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {smsDrafts.slice(0, 4).map((draft) => (
-                          <li
-                            key={draft.id}
-                            className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs"
-                          >
-                            <p className="font-semibold text-[#112a46] text-[11px]">
-                              {draft.district} · {draft.topic}
-                            </p>
-                            <p className="text-slate-600 mt-1">{draft.message}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                <p className="form-help">
+                  Stories and account data are stored in this browser only. This is a prototype,
+                  not a secure publishing system.
+                </p>
+              </form>
+            </>
+          )}
+        </div>
       </div>
     </section>
   );

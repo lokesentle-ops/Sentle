@@ -1,41 +1,29 @@
-export type Language = "en" | "st";
+export type ArticleCategory = 'Public Notices' | 'Health' | 'Education' | 'Development';
 
-export type Category =
-  | "Public Notices"
-  | "Health"
-  | "Education"
-  | "Development"
-  | "Official Documents";
+export type ArticleVisual = 'notice' | 'health' | 'education' | 'development' | 'public';
 
-export type ArticleStatus =
-  | "draft"
-  | "pending_review"
-  | "changes_requested"
-  | "published"
-  | "rejected";
+export type ArticleStatus = 'draft' | 'pending_review' | 'changes_requested' | 'published' | 'rejected';
 
-export type VisualTone = "notice" | "health" | "education" | "development" | "public" | "document";
+export type LanguageCode = 'en' | 'st';
 
 export interface Article {
   id: number;
   title: string;
-  category: Category;
+  category: ArticleCategory;
   ministry: string;
   date: string;
-  visual: VisualTone;
+  symbol: string;
+  visual: ArticleVisual;
   summary: string;
   body: string;
+  image?: string;
+  imageAlt?: string;
   titleSt?: string;
   summarySt?: string;
   bodySt?: string;
   sourceUrl?: string;
-  district?: string;
-  isOfficialDoc?: boolean;
-  fileType?: "PDF" | "ZIP" | "Web Release";
-  fileSize?: string;
-  downloads?: number;
-  author?: string;
   status?: ArticleStatus;
+  author?: string;
   isCustom?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -46,18 +34,17 @@ export interface Article {
 
 export interface DemoUser {
   username: string;
-  password: string;
-  role: "publisher";
-  createdAt: string;
+  password?: string;
+  role: 'admin' | 'publisher';
+  createdAt?: string;
 }
 
-export interface UserSession {
+export interface DemoSession {
   username: string;
-  role: "admin" | "publisher";
+  role: 'admin' | 'publisher';
 }
 
-export interface SmsDraft {
-  id: string;
+export interface AdminSmsDraft {
   district: string;
   topic: string;
   message: string;
@@ -65,18 +52,13 @@ export interface SmsDraft {
   createdAt: string;
 }
 
-export interface ChatMessage {
+export interface LesothoMinistry {
   id: string;
-  role: "user" | "model";
-  text: string;
-  modelUsed?: string;
-  timestamp: string;
-}
-
-export interface DistrictInfo {
   name: string;
-  zone: "Lowlands" | "Foothills" | "Highlands" | "Senqu River Valley";
-  town: string;
-  focusSummary: string;
-  sesothoSummary: string;
+  portfolio: string;
+  category: ArticleCategory;
+  image: string;
+  imageAlt: string;
+  logo: string;
+  logoAlt: string;
 }
