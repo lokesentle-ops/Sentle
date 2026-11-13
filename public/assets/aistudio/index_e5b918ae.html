@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="A prototype for easier access to official government news in Lesotho." />
+  <title>Public Access to Government News</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="topline">
+    <div class="container top-inner">
+      <span>Kingdom of Lesotho · Public information portal</span>
+      <div class="top-actions">
+        <button class="text-button" id="contrastToggle" aria-label="Toggle high contrast">High contrast</button>
+        <label class="sr-only" for="languageSelect">Choose language</label>
+        <select id="languageSelect" aria-label="Choose language">
+          <option value="en">English</option>
+          <option value="st">Sesotho (basic interface)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#" aria-label="Government News home">
+        <span class="brand-mark" aria-hidden="true">GN</span>
+        <span class="brand-copy"><strong>Government News</strong><small>Public Access Portal</small></span>
+      </a>
+      <button class="menu-toggle" id="menuToggle" aria-expanded="false" aria-controls="mainNav">☰ <span>Menu</span></button>
+      <nav id="mainNav" class="main-nav" aria-label="Main navigation">
+        <a class="active" href="#home">Home</a>
+        <a href="#latest">Latest news</a>
+        <a href="#topics">Topics</a>
+        <a href="#archive" data-i18n="navArchive">News archive</a>
+        <a href="#access-tools">Access tools</a>
+        <a href="#publish" id="publishNav">Publish</a>
+        <a href="#about" data-i18n="navAbout">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" id="home">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="live-dot"></span> OFFICIAL PUBLIC INFORMATION</div>
+          <h1>Government news, <em>made easier to find.</em></h1>
+          <p>Discover announcements, public notices and national updates in one simple place. Search individual stories without downloading an entire newspaper.</p>
+          <form class="search-form" id="searchForm" role="search">
+            <label class="sr-only" for="searchInput">Search government news</label>
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="searchInput" type="search" placeholder="Search news, topics or ministries..." autocomplete="off" />
+            <button type="submit">Search news</button>
+          </form>
+          <div class="search-hints"><span>Try:</span> <button class="hint" data-search="health">Health</button><button class="hint" data-search="public notice">Public notice</button><button class="hint" data-search="education">Education</button></div>
+        </div>
+        <div class="hero-art" aria-label="Illustration of news and public information">
+          <div class="art-sun"></div>
+          <div class="art-paper paper-back"><span></span><span></span><span></span></div>
+          <div class="art-paper paper-front"><div class="paper-label">PUBLIC NOTICE</div><div class="paper-headline"></div><div class="paper-lines"><i></i><i></i><i></i></div><div class="paper-stamp">OFFICIAL</div></div>
+          <div class="art-bubble bubble-one">✓ Verified source</div>
+          <div class="art-bubble bubble-two">↗ Share a story</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="quick-strip">
+      <div class="container quick-grid">
+        <a href="#latest"><span class="quick-icon">▤</span><span><strong>Latest updates</strong><small>Recently published stories</small></span><b>→</b></a>
+        <a href="#archive"><span class="quick-icon">◷</span><span><strong>News archive</strong><small>Find older information</small></span><b>→</b></a>
+        <a href="#topics"><span class="quick-icon">⌕</span><span><strong>Browse topics</strong><small>Explore by subject</small></span><b>→</b></a>
+      </div>
+    </section>
+
+    <section class="section" id="latest">
+      <div class="container">
+        <div class="section-heading">
+          <div><div class="eyebrow">STAY INFORMED</div><h2>Latest government news</h2><p>Browse stories individually and share the information that matters to you.</p></div>
+          <a class="inline-link" href="#archive">Explore the archive <span>→</span></a>
+        </div>
+        <div class="filter-row">
+          <div class="filter-tabs" id="categoryTabs" aria-label="Filter news by category">
+            <button class="filter-tab selected" data-category="All">All stories</button>
+            <button class="filter-tab" data-category="Public Notices">Public notices</button>
+            <button class="filter-tab" data-category="Health">Health</button>
+            <button class="filter-tab" data-category="Education">Education</button>
+            <button class="filter-tab" data-category="Development">Development</button>
+          </div>
+          <label class="sort-control">Sort by
+            <select id="sortSelect"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select>
+          </label>
+        </div>
+        <div class="results-note" id="resultsNote" aria-live="polite">Showing all sample stories</div>
+        <div class="news-grid" id="newsGrid"></div>
+        <div class="empty-state hidden" id="emptyState"><div class="empty-icon">⌕</div><h3>No stories found</h3><p>Try a different keyword or choose another topic.</p><button class="button button-outline" id="clearFilters">Clear search and filters</button></div>
+      </div>
+    </section>
+
+    <section class="section access-tools-section" id="access-tools">
+      <div class="container">
+        <div class="section-heading">
+          <div><div class="eyebrow">DISCOVER MORE</div><h2>Find news that matters to you</h2><p>Browse local information and discover related stories. Listen to audio directly from each news article.</p></div>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-panel district-panel" id="districtMap">
+            <div class="feature-icon">⌖</div><div class="eyebrow">LOCAL INFORMATION</div><h3>Browse by district</h3>
+            <p>Select a district to preview how locally relevant announcements could be organised.</p>
+            <div class="district-map" role="group" aria-label="Choose a district">
+              <button type="button" data-district="Butha-Buthe">Butha-Buthe</button><button type="button" data-district="Leribe">Leribe</button><button type="button" data-district="Berea">Berea</button><button type="button" data-district="Maseru">Maseru</button><button type="button" data-district="Mafeteng">Mafeteng</button><button type="button" data-district="Mohale's Hoek">Mohale's Hoek</button><button type="button" data-district="Quthing">Quthing</button><button type="button" data-district="Qacha's Nek">Qacha's Nek</button><button type="button" data-district="Thaba-Tseka">Thaba-Tseka</button><button type="button" data-district="Mokhotlong">Mokhotlong</button>
+            </div>
+            <div class="district-result" id="districtResult" aria-live="polite">Choose a district to see the selected area. This schematic is not a geographic map.</div>
+          </article>
+
+          <article class="feature-panel recommendations-panel" id="recommendations">
+            <div class="feature-icon">✧</div><div class="eyebrow">PERSONALISED DISCOVERY</div><h3>Recommended for you</h3>
+            <p>Get suggestions based on a topic you choose. A live service could use saved preferences and reading activity with user consent.</p>
+            <label for="recommendTopic">What interests you?</label><select id="recommendTopic"><option value="All">All topics</option><option>Public Notices</option><option>Health</option><option>Education</option><option>Development</option></select>
+            <button class="button button-primary" id="recommendBtn" type="button">Show recommendations</button>
+            <div class="recommend-list" id="recommendList" aria-live="polite"><p class="feature-help">Choose a topic to see sample recommendations.</p></div>
+            <p class="feature-help">These are simple topic-based suggestions, not AI recommendations.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="trust-band">
+      <div class="container trust-inner">
+        <div class="trust-symbol">✓</div>
+        <div><h2>Know where your news comes from</h2><p>Each article in the full service should identify the responsible ministry, publication date and original official source.</p></div>
+        <a href="#about" class="button button-light">How verification works</a>
+      </div>
+    </section>
+
+    <section class="section topics-section" id="topics">
+      <div class="container">
+        <div class="section-heading">
+          <div><div class="eyebrow">EXPLORE BY SUBJECT</div><h2>Browse news topics</h2><p>Go directly to the information you are looking for.</p></div>
+        </div>
+        <div class="topic-grid">
+          <button class="topic-card" data-topic="Health"><span class="topic-icon">✚</span><strong>Health</strong><small>Public health and services</small><span class="topic-arrow">↗</span></button>
+          <button class="topic-card" data-topic="Education"><span class="topic-icon">▣</span><strong>Education</strong><small>Schools, learning and skills</small><span class="topic-arrow">↗</span></button>
+          <button class="topic-card" data-topic="Development"><span class="topic-icon">⌂</span><strong>Development</strong><small>Projects and communities</small><span class="topic-arrow">↗</span></button>
+          <button class="topic-card" data-topic="Public Notices"><span class="topic-icon">⚑</span><strong>Public notices</strong><small>Deadlines and announcements</small><span class="topic-arrow">↗</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="archive-section" id="archive">
+      <div class="container archive-inner">
+        <div><div class="eyebrow">KEEP INFORMATION WITHIN REACH</div><h2>Looking for an older story?</h2><p>Search the sample archive by keyword, topic or publication date. In a live website, this section would contain verified past government articles and editions.</p></div>
+        <form class="archive-form" id="archiveForm">
+          <label for="archiveKeyword">Keyword</label><input id="archiveKeyword" type="search" placeholder="e.g. public notice" />
+          <div class="archive-form-row"><div><label for="archiveTopic">Topic</label><select id="archiveTopic"><option value="All">All topics</option><option>Public Notices</option><option>Health</option><option>Education</option><option>Development</option></select></div><div><label for="archiveDate">Published after</label><input id="archiveDate" type="date" /></div></div>
+          <button type="submit" class="button button-primary">Search archive →</button>
+        </form>
+      </div>
+    </section>
+
+
+    <section class="publish-section" id="publish">
+      <div class="container publish-inner">
+        <div class="publish-intro">
+          <div class="eyebrow">CONTENT MANAGEMENT DEMO</div>
+          <h2>Publisher dashboard</h2>
+          <p>Add a sample article to see how an authorised publishing workflow could work. This demo saves entries only in this browser and is not secure enough for real government publishing.</p>
+          <div class="dashboard-note"><strong>Important:</strong> For a live service, user accounts, server-side validation, approvals and a database must be implemented before publishing official information.</div>
+        </div>
+        <div class="publisher-controls">
+        <div class="publisher-auth-wrap" id="publisherAuthWrap">
+          <form class="publisher-form auth-form" id="loginForm">
+            <div class="form-heading"><span class="dashboard-icon">🔐</span><div><strong>Publisher portal login</strong><small>Sign in with details supplied by the administrator</small></div></div>
+            <label for="loginUsername">Username *</label><input id="loginUsername" autocomplete="username" required placeholder="Enter your username" />
+            <label for="loginPassword">Password *</label><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Enter your password" />
+            <button type="submit" class="button button-primary">Sign in</button>
+            <p class="form-help">Demo administrator account: <strong>admin</strong> / <strong>Admin123!</strong>. Change this in a real system; this browser-only demo is not secure.</p>
+            <p class="auth-message" id="loginMessage" aria-live="polite"></p>
+          </form>
+          <div class="publisher-form admin-panel hidden" id="adminPanel">
+            <div class="form-heading"><span class="dashboard-icon">♙</span><div><strong>Administrator dashboard</strong><small>Create a publisher account</small></div></div>
+            <p class="form-help">Create a username and temporary password, then give these details to the publisher securely.</p>
+            <form id="createPublisherForm">
+              <label for="newPublisherUsername">Publisher username *</label><input id="newPublisherUsername" required minlength="3" maxlength="40" autocomplete="off" placeholder="e.g. news.publisher" />
+              <label for="newPublisherPassword">Temporary password *</label><input id="newPublisherPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" />
+              <button type="submit" class="button button-primary">Create publisher login</button>
+            </form>
+            <div class="credentials-result hidden" id="credentialsResult" aria-live="polite"></div>
+            <div class="admin-review-manager">
+              <div class="form-heading"><span class="dashboard-icon">✓</span><div><strong>Review publisher submissions</strong><small>Approve stories before they appear publicly</small></div></div>
+              <p class="form-help">Review each submitted story and approve it for the public news page or request changes from the publisher.</p>
+              <div class="submission-list" id="adminReviewList"><p class="form-help">No submissions are waiting for review.</p></div>
+            </div>
+            <div class="admin-sms-manager">
+              <div class="form-heading"><span class="dashboard-icon">✉</span><div><strong>Manage government SMS alerts</strong><small>Administrator only · demonstration mode</small></div></div>
+              <p class="form-help">Prepare an official alert for a selected district or all districts. This demo saves a draft; it does not send a text message.</p>
+              <form id="adminSmsForm">
+                <label for="adminSmsDistrict">Target audience *</label>
+                <select id="adminSmsDistrict" required><option value="All districts">All districts</option><option>Maseru</option><option>Berea</option><option>Leribe</option><option>Butha-Buthe</option><option>Mokhotlong</option><option>Thaba-Tseka</option><option>Qacha's Nek</option><option>Quthing</option><option>Mafeteng</option><option>Mohale's Hoek</option></select>
+                <label for="adminSmsTopic">Alert category *</label>
+                <select id="adminSmsTopic" required><option>Public Notices</option><option>Health</option><option>Education</option><option>Development</option><option>Emergency</option></select>
+                <label for="adminSmsMessage">SMS message *</label>
+                <textarea id="adminSmsMessage" required maxlength="320" rows="4" placeholder="Write a short, verified public announcement"></textarea>
+                <div class="sms-character-count"><span id="adminSmsCharCount">0</span>/320 characters</div>
+                <button type="submit" class="button button-primary">Prepare SMS alert draft</button>
+              </form>
+              <div class="admin-sms-result hidden" id="adminSmsResult" aria-live="polite"></div>
+              <div class="admin-sms-history" id="adminSmsHistory"><strong>Prepared alert drafts</strong><p class="form-help">No alert drafts have been prepared in this browser.</p></div>
+            </div>
+            <button type="button" class="button button-outline auth-logout" data-logout>Log out</button>
+          </div>
+        </div>
+        <div class="publisher-form publisher-workspace hidden" id="publisherWorkspace">
+          <div class="form-heading"><span class="dashboard-icon">✓</span><div><strong>Publisher workspace</strong><small id="publisherWelcome">Signed in</small></div></div>
+          <p class="form-help">Prepare stories, save unfinished work as a draft, and submit completed articles for administrator review. Only approved articles appear in public news.</p>
+          <div class="publisher-stats" id="publisherStats" aria-live="polite"></div>
+          <div class="publisher-my-articles">
+            <div class="form-heading"><span class="dashboard-icon">▤</span><div><strong>My articles</strong><small>Track drafts, review status and published stories</small></div></div>
+            <div class="submission-list" id="publisherArticleList"><p class="form-help">You have not created any articles yet.</p></div>
+          </div>
+          <div class="admin-sms-manager publisher-sms-view">
+            <div class="form-heading"><span class="dashboard-icon">✉</span><div><strong>Government SMS alerts</strong><small>Publisher dashboard · view only</small></div></div>
+            <p class="form-help">View alert drafts prepared by the administrator. Only the administrator can create or manage official SMS alert drafts.</p>
+            <div class="admin-sms-history" id="publisherSmsHistory"><strong>Prepared alert drafts</strong><p class="form-help">No alert drafts have been prepared in this browser.</p></div>
+          </div>
+          <button type="button" class="button button-outline auth-logout" data-logout>Log out</button>
+        </div>
+        <form class="publisher-form hidden" id="publisherForm">
+          <div class="form-heading"><span class="dashboard-icon">＋</span><div><strong id="publisherFormHeading">Create a news story</strong><small>Save as a draft or submit for administrator review</small></div></div>
+          <input type="hidden" id="publisherEditingId" value="" />
+          <label for="publisherTitle">Article title *</label>
+          <input id="publisherTitle" required maxlength="140" placeholder="Enter a clear article title" />
+          <div class="archive-form-row">
+            <div><label for="publisherCategory">Category *</label><select id="publisherCategory" required><option>Public Notices</option><option>Health</option><option>Education</option><option>Development</option></select></div>
+            <div><label for="publisherDate">Publication date *</label><input id="publisherDate" type="date" required /></div>
+          </div>
+          <label for="publisherMinistry">Ministry / source *</label>
+          <input id="publisherMinistry" required maxlength="100" placeholder="Name of responsible ministry" />
+          <label for="publisherSource">Official source URL (optional)</label>
+          <input id="publisherSource" type="url" placeholder="https://www.gov.ls/..." />
+          <label for="publisherSummary">Short summary *</label>
+          <textarea id="publisherSummary" required maxlength="280" rows="3" placeholder="Summarise the story in plain language"></textarea>
+          <label for="publisherBody">Article content (English) *</label>
+          <textarea id="publisherBody" required rows="5" placeholder="Enter the article text"></textarea>
+          <details class="translation-fields"><summary>Optional: add a Sesotho version</summary>
+            <label for="publisherTitleSt">Article title in Sesotho</label><input id="publisherTitleSt" maxlength="140" placeholder="Sehlooho sa litaba ka Sesotho" />
+            <label for="publisherSummarySt">Summary in Sesotho</label><textarea id="publisherSummarySt" maxlength="280" rows="3" placeholder="Kakaretso ea litaba ka Sesotho"></textarea>
+            <label for="publisherBodySt">Article content in Sesotho</label><textarea id="publisherBodySt" rows="5" placeholder="Litaba ka Sesotho"></textarea>
+            <p class="form-help">Enter a human-reviewed Sesotho translation. The website does not translate articles automatically.</p>
+          </details>
+          <label class="publisher-check"><input id="publisherConfirmed" type="checkbox" required /> I confirm this article has been checked and is ready for administrator review.</label>
+          <div class="publisher-form-actions">
+            <button type="button" class="button button-outline" id="saveDraftButton">Save as draft</button>
+            <button type="submit" class="button button-primary" id="submitReviewButton">Submit for review</button>
+            <button type="button" class="button button-outline hidden" id="cancelEditButton">Cancel editing</button>
+          </div>
+          <p class="form-help">Stories and account data are stored in this browser only. This is a prototype, not a secure publishing system.</p>
+        </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="section about-section" id="about">
+      <div class="container about-grid">
+        <div><div class="eyebrow">ABOUT THIS PROJECT</div><h2>Public information should be easy to access.</h2></div>
+        <div><p>This student design-thinking prototype explores a more accessible way for citizens, businesses, journalists, researchers, civil-society organisations and Basotho living abroad to discover government news.</p><p><strong>Prototype notice:</strong> the articles shown here are sample content for demonstrating the interface. They are not confirmed government announcements. A production website would need approved content, verified source links, publishing controls and secure data storage.</p></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-main">
+      <a class="brand brand-footer" href="#home"><span class="brand-mark">GN</span><span class="brand-copy"><strong>Government News</strong><small>Public Access Portal · Prototype</small></span></a>
+      <div class="footer-links"><a href="#home">Home</a><a href="#latest">Latest news</a><a href="#archive">Archive</a><a href="#about">About</a></div>
+      <a href="#home" class="back-top">Back to top ↑</a>
+    </div>
+    <div class="container footer-bottom"><span>© 2026 Public Access to Government News — student prototype</span><span>Designed for access · discovery · trust</span></div>
+  </footer>
+
+  <dialog id="articleDialog" class="article-dialog">
+    <button class="dialog-close" id="dialogClose" aria-label="Close article">×</button>
+    <div id="articleContent"></div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="script.js"></script>
+</body>
+</html>

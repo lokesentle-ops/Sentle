@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Manrope", system-ui, sans-serif;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+:root {
+  --portal-navy: #112a46;
+  --portal-blue: #1c5d91;
+  --portal-blue-bright: #287bb5;
+  --portal-sky: #eaf4fb;
+  --portal-gold: #d99b26;
+  --portal-ink: #1d2c3c;
+  --portal-muted: #526576;
+  --portal-line: #dce5ec;
+  --portal-wash: #f5f8fb;
+  --portal-green: #1e6b52;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 84px;
+}
+
+body {
+  margin: 0;
+  background-color: #ffffff;
+  color: var(--portal-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+body.high-contrast {
+  --portal-navy: #000000;
+  --portal-blue: #003a99;
+  --portal-blue-bright: #0047b3;
+  --portal-ink: #000000;
+  --portal-muted: #1f2937;
+  --portal-line: #475569;
+  --portal-wash: #f8fafc;
+}
+
+body.high-contrast a:focus-visible,
+body.high-contrast button:focus-visible,
+body.high-contrast input:focus-visible,
+body.high-contrast select:focus-visible,
+body.high-contrast textarea:focus-visible {
+  outline: 3px solid #003a99;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

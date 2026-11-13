@@ -1,0 +1,6 @@
+{
+  "name": "Lesotho Government News",
+  "description": "Public access portal for Kingdom of Lesotho official news, government documents, district updates, Gemini text-to-speech, voice transcription, and civic AI assistance.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
